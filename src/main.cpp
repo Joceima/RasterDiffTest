@@ -17,6 +17,8 @@
 #include <random>
 #include <glm/gtc/random.hpp>
 
+#include "cuda_gl_interop.hpp"
+
 
 using namespace glm;
 using namespace M3D_RASTER_DIFF;
@@ -252,9 +254,6 @@ void render(int vertexCount, glm::mat4 mvpMatrix)
 
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, vertexCount);
-
-
-    // glDrawArrays()
 }
 
 
@@ -306,13 +305,13 @@ int main()
         return -1;
     }
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // We want OpenGL 3.3
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4); // We want OpenGL 3.3
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // We don't want the old OpenGL 
 
     // Open a window and create its OpenGL context
     GLFWwindow* window; // (In the accompanying source code, this variable is global for simplicity)
-    window = glfwCreateWindow( 1024, 768, "Tutorial 01", NULL, NULL);
+    window = glfwCreateWindow( _windowWidth, _windowHeight, "Tutorial 01", NULL, NULL);
     if( window == NULL ){
         glfwTerminate();
         return -1;
@@ -344,10 +343,28 @@ int main()
     // Matrice finale = Projection * View * Model
     glm::mat4 MVP = Projection * View * Model;
 
+
+    // optimisation loop
+    //int optimisationStep = 10;
+    //for(int i = 0; i < optimisation; i++)
+    //{
+    //    MVP = _randomizeCameraView(_boxCenter, _boxExtents, _windowWidth, _windowHeight);
+    //    render(numVertices, MVP);
+    //}
+
+    M3D_RASTER_DIFF::CudaGLInterop interopManager(_windowWidth, _windowHeight);
+    interopManager.init();
+
     // https://www.opengl-tutorial.org/beginners-tutorials/tutorial-1-opening-a-window/
     glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
     do{
-        glClear( GL_COLOR_BUFFER_BIT );
+        glBindFramebuffer(GL_FRAMEBUFFER, interopManager.getFboId());
+        
+        glViewport(0, 0, _windowWidth, _windowHeight);
+        glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 
         if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
         {
@@ -355,6 +372,11 @@ int main()
             MVP = _randomizeCameraView(_boxCenter, _boxExtents, _windowWidth, _windowHeight);
         }
         render(numVertices, MVP);
+        
+        interopManager.captureFrame();
+        uchar4* devPixels = interopManager.get<uchar4>();
+        interopManager.unmap();
+        
         // Swap buffers
         glfwSwapBuffers(window);
         glfwPollEvents();
