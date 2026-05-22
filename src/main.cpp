@@ -140,19 +140,14 @@ void computeBoundingBox(const std::vector<Vertex>& vertices, glm::vec3& boxCente
     }
 
     boxCenter = (minBounds + maxBounds) * 0.5f;
-
     boxExtents = maxBounds - minBounds;
-
 }
 
 
 int init()
 {
     std::string modelPath = "data/bunny/Bunny.obj";
-    //std::string modelMtlBaseDir = "data/Bunny.mtl";
-
     std::vector<Vertex> bunnyVertices = load3dModel(modelPath);
-
    
     computeBoundingBox(bunnyVertices, _boxCenter, _boxExtents);
 
@@ -161,8 +156,6 @@ int init()
         std::cerr << "Pas d'objet chargé" << std::endl;
         return false;
     }
-
-    //initCamera();
 
     // render
     glGenVertexArrays(1, &VAO);
@@ -199,19 +192,18 @@ int init()
     glCompileShader(vertexShader);
     glCompileShader(fragmentShader);
 
-
     // Check if compilation is ok .
-		// COMPILATION des SHADERS
-		GLint compiled;
-		glGetShaderiv( vertexShader, GL_COMPILE_STATUS, &compiled );
-		if ( !compiled )
-		{
-			GLchar log[ 1024 ];
-			glGetShaderInfoLog( vertexShader, sizeof( log ), NULL, log );
-			glDeleteShader( vertexShader );
-			glDeleteShader( fragmentShader );
-			std ::cerr << " Error compiling vertex shader : " << log << std ::endl;
-		}
+	// COMPILATION des SHADERS
+	GLint compiled;
+	glGetShaderiv( vertexShader, GL_COMPILE_STATUS, &compiled );
+	if ( !compiled )
+	{
+		GLchar log[ 1024 ];
+		glGetShaderInfoLog( vertexShader, sizeof( log ), NULL, log );
+		glDeleteShader( vertexShader );
+		glDeleteShader( fragmentShader );
+		std ::cerr << " Error compiling vertex shader : " << log << std ::endl;
+	}
 
     _program = glCreateProgram();
 
@@ -220,7 +212,7 @@ int init()
     glLinkProgram(_program);
 
     // ETAPE LINK
-		// Check if link is ok .
+	// Check if link is ok .
 	GLint linked;
 	glGetProgramiv( _program, GL_LINK_STATUS, &linked );
 	if ( !linked )
@@ -239,36 +231,23 @@ int init()
     return bunnyVertices.size();
 }
 
+
 void render(int vertexCount, glm::mat4 mvpMatrix)
 {
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glEnable(GL_DEPTH_TEST);
-
     glUseProgram(_program);
 
     GLuint MatrixID = glGetUniformLocation(_program, "MVP");
     glUniformMatrix4fv(MatrixID, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
-
 
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, vertexCount);
 }
 
 
-/*
-// fonction du projet unity 
-public void RandomizeCameraView()
-	{
-		Bounds targetBounds = mesh3DSceneBounds;
-		float distance = targetBounds.extents.magnitude;
-		distance *= (randomViewZoomRange.x + UnityEngine.Random.value * (randomViewZoomRange.y - randomViewZoomRange.x));
-		cameraOptim.transform.position = targetBounds.center + UnityEngine.Random.onUnitSphere * distance;
-		float3 lookAtCenter = new float3(targetBounds.center) + (new float3(UnityEngine.Random.value, UnityEngine.Random.value, UnityEngine.Random.value) * 2.0f - 1.0f) * targetBounds.extents * 0.5f;
-		cameraOptim.transform.LookAt(lookAtCenter, UnityEngine.Random.onUnitSphere);
-	}
-*/
 
 // Générer par Gemini - à changer 
 glm::mat4 _randomizeCameraView(const glm::vec3 boxCenter, const glm::vec3 boxExtents, const float screenWidth, const float screenHeight)
@@ -340,32 +319,26 @@ int main()
     glm::mat4 View = _camera.getViewMatrix();
     glm::mat4 Model = glm::mat4(1.0f);
 
-    // Matrice finale = Projection * View * Model
     glm::mat4 MVP = Projection * View * Model;
 
-
-    // optimisation loop
-    //int optimisationStep = 10;
-    //for(int i = 0; i < optimisation; i++)
-    //{
-    //    MVP = _randomizeCameraView(_boxCenter, _boxExtents, _windowWidth, _windowHeight);
-    //    render(numVertices, MVP);
-    //}
+    std::cout << "--- DIAGNOSTIC GPU ---" << std::endl;
+    std::cout << "OpenGL Vendor : " << glGetString(GL_VENDOR) << std::endl;
+    std::cout << "OpenGL Renderer : " << glGetString(GL_RENDERER) << std::endl;
+    std::cout << "----------------------" << std::endl;
 
     M3D_RASTER_DIFF::CudaGLInterop interopManager(_windowWidth, _windowHeight);
-    interopManager.init();
+    if(!interopManager.init())
+    {
+        std::cerr << "Echec de l'initialisation de l'interop ! " << std::endl;
+    }
 
     // https://www.opengl-tutorial.org/beginners-tutorials/tutorial-1-opening-a-window/
     glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
     do{
-        glBindFramebuffer(GL_FRAMEBUFFER, interopManager.getFboId());
-        
+        glBindFramebuffer(GL_FRAMEBUFFER, interopManager.getFboId());  
         glViewport(0, 0, _windowWidth, _windowHeight);
         glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-
         if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
         {
             std::cout << "Space is pressed" << std::endl;
@@ -374,9 +347,23 @@ int main()
         render(numVertices, MVP);
         
         interopManager.captureFrame();
-        uchar4* devPixels = interopManager.get<uchar4>();
+        uchar4* devPixels = interopManager.get<uchar4>(); // regarder un peu plus pourquoi car pas compris 
+        if(devPixels == NULL)
+        {
+            std::cout << "devPixels est NULL" << std::endl;
+        }
+
+
         interopManager.unmap();
+        //interopManager.checkResult();
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, interopManager.getFboId());
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBlitFramebuffer(0, 0, _windowWidth, _windowHeight,
+                        0, 0, _windowWidth, _windowHeight,
+                        GL_COLOR_BUFFER_BIT, GL_NEAREST
+        );
         
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         // Swap buffers
         glfwSwapBuffers(window);
         glfwPollEvents();

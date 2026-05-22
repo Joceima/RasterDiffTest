@@ -10,6 +10,8 @@
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
 
+#include <iostream>
+
 namespace M3D_RASTER_DIFF
 {
     class CudaGLInterop {
@@ -24,15 +26,22 @@ namespace M3D_RASTER_DIFF
         template<typename Type>
         Type *get()
         {
+            // le problème vient d'ici 
             if(!m_mappedPtr)
             {
-                cudaGraphicsMapResources(1, &cudaPboResource, 0);
+                cudaError_t err = cudaGraphicsMapResources(1, &cudaPboResource, 0);
+                if(err != cudaSuccess)
+                {
+                    std::cerr << "[CUDA Error] Impossible de mapper la ressource : "<< cudaGetErrorString(err) << std::endl;
+                }
                 cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void**>(&m_mappedPtr), nullptr, cudaPboResource);
             }
             return reinterpret_cast<Type*>(m_mappedPtr);
         }
 
         void unmap();
+
+        void checkResult();
 
         GLuint getFboId() const { return m_fbo;};
         GLuint getTexture() const { return m_fboTexture;}
