@@ -38,12 +38,23 @@ struct MeshData {
     std::vector<unsigned int> indices;
 };
 
+
+extern "C" void launchTriangleInitialization(
+    float3* devVertices, 
+    float centerX, float centerY, float centerZ,
+    float extentsX, float extentsY, float extentsZ,
+    int numTriangles
+);
+
 GLuint VAO;
 GLuint VBO;
 GLuint _program;
 std::string _shaderFolder = "src/shaders/";
 glm::vec3 _boxCenter;
 glm::vec3 _boxExtents;
+
+// test
+GLuint soupVAO;
 
 // ==========================================
 // 0. UTILITAIRE
@@ -162,7 +173,7 @@ int init()
     glBindVertexArray(VAO);
 
     glGenBuffers(1, &VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO); // est-ce que je dois garder ce vbo ? 
     glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * bunnyVertices.size(), &bunnyVertices[0], GL_STATIC_DRAW);
     
     // attribut 0 : position
@@ -260,7 +271,7 @@ glm::mat4 _randomizeCameraView(const glm::vec3 boxCenter, const glm::vec3 boxExt
     float finalDistance = baseDistance * currentZoom;
 
     glm::vec3 cameraPosition = boxCenter + glm::sphericalRand(1.0f) * finalDistance;
-    glm::vec3 lookAtCenter = boxCenter + (randomVec3Cube() * boxExtents * 0.5f);
+    glm::vec3 lookAtCenter = boxCenter; /*+ (randomVec3Cube() * boxExtents);*/
     glm::vec3 cameraUp = glm::sphericalRand(1.0f);
 
     if(glm::abs(glm::dot(cameraUp, glm::normalize(lookAtCenter - cameraPosition))) > 0.99f)
@@ -332,6 +343,8 @@ int main()
         std::cerr << "Echec de l'initialisation de l'interop ! " << std::endl;
     }
 
+   
+
     // https://www.opengl-tutorial.org/beginners-tutorials/tutorial-1-opening-a-window/
     glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
     do{
@@ -345,16 +358,51 @@ int main()
             MVP = _randomizeCameraView(_boxCenter, _boxExtents, _windowWidth, _windowHeight);
         }
         render(numVertices, MVP);
+        unsigned int nbTrianglesInSoup = 1000;
+        // ==========================================
+        // AFFICHAGE TEMPORAIRE DE LA SOUPE
+        // ==========================================
+        glUseProgram(_program);
+        GLint matrixID = glGetUniformLocation(_program, "MVP"); 
+        glUniformMatrix4fv(matrixID, 1, GL_FALSE, &MVP[0][0]);
+        glBindVertexArray(soupVAO);
+        glDrawArrays(GL_TRIANGLES, 0, nbTrianglesInSoup * 3); 
+
+        glBindVertexArray(0);
+        // ==========================================
         
         interopManager.captureFrame();
-        uchar4* devPixels = interopManager.get<uchar4>(); // regarder un peu plus pourquoi car pas compris 
-        if(devPixels == NULL)
+
+
+        if(!interopManager.initVboTest(nbTrianglesInSoup))
         {
-            std::cout << "devPixels est NULL" << std::endl;
+            std::cerr << "Echec de l'initialisation de l'initialisation du vbo ! " << std::endl;
         }
 
+        interopManager.mapAll();
+        uchar4* devPixels = interopManager.getDevPixels<uchar4>(); // regarder un peu plus pourquoi car pas compris 
+      
+        Vertex* devVertices = interopManager.getDevVertices<Vertex>();
+        if(devVertices == NULL || devPixels == NULL)
+        {
+            std::cout << "les pointeurs devVertices et devPixels sont NULL" << std::endl;
+        } else {
+            launchTriangleInitialization(reinterpret_cast<float3*>(devVertices),
+                                        _boxCenter.x, _boxCenter.y, _boxCenter.z,
+                                        _boxExtents.x, _boxExtents.y, _boxExtents.z,
+                                        nbTrianglesInSoup);
+        }
 
-        interopManager.unmap();
+        interopManager.unmapAll();
+
+        // permet d'afficher la soupe 
+        glGenVertexArrays(1, &soupVAO);
+        glBindVertexArray(soupVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, interopManager.getVboTrianglesSoupId());
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glBindVertexArray(0);
+
         //interopManager.checkResult();
         glBindFramebuffer(GL_READ_FRAMEBUFFER, interopManager.getFboId());
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -367,7 +415,6 @@ int main()
         // Swap buffers
         glfwSwapBuffers(window);
         glfwPollEvents();
-
     } 
     while( glfwGetKey(window, GLFW_KEY_ESCAPE ) != GLFW_PRESS &&
            glfwWindowShouldClose(window) == 0 );

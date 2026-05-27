@@ -21,34 +21,39 @@ namespace M3D_RASTER_DIFF
 
         bool init();
 
+        bool initVboTest(unsigned int nbTrianglesInSoup);
+
         void captureFrame();
 
         template<typename Type>
-        Type *get()
+        Type *getDevPixels()
         {
-            // le problème vient d'ici 
-            if(!m_mappedPtr)
-            {
-                cudaError_t err = cudaGraphicsMapResources(1, &cudaPboResource, 0);
-                if(err != cudaSuccess)
-                {
-                    std::cerr << "[CUDA Error] Impossible de mapper la ressource : "<< cudaGetErrorString(err) << std::endl;
-                }
-                cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void**>(&m_mappedPtr), nullptr, cudaPboResource);
-            }
             return reinterpret_cast<Type*>(m_mappedPtr);
         }
 
-        void unmap();
+        // problème ici, impossible de mapper la ressource pour le vbo 
+        template<typename Type>
+        Type *getDevVertices()
+        {
+            return reinterpret_cast<Type*>(m_vboMappedPtr);
+        }
+
+        void mapAll(); // test correction gemini 
+        void unmapAll();
+  
 
         void checkResult();
 
         GLuint getFboId() const { return m_fbo;};
         GLuint getTexture() const { return m_fboTexture;}
+        GLuint getVboTrianglesSoupId() const { return m_vboTrianglesSoup; }
 
         private:
             void initGLBuffers();
             bool initCudaInterop();
+
+            void initGLBuffersTriangleTest(unsigned int nbTrianglesInSoup);
+            bool initCudaInteropTriangleTest();
 
         private: 
             unsigned int m_height;
@@ -61,6 +66,10 @@ namespace M3D_RASTER_DIFF
 
             cudaGraphicsResource_t cudaPboResource = nullptr;
             void* m_mappedPtr = nullptr;
+
+            GLuint m_vboTrianglesSoup;
+            cudaGraphicsResource_t cudaVboResource = nullptr;
+            void* m_vboMappedPtr = nullptr;
 
     };
 }

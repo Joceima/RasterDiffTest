@@ -25,28 +25,44 @@ namespace M3D_RASTER_DIFF
         {
             glDeleteRenderbuffers(1, &m_rboDepth);
         }
-        CudaGLInterop::unmap();
+        CudaGLInterop::unmapAll();
     }
 
-    void CudaGLInterop::unmap()
+    void CudaGLInterop::mapAll()
     {
-        if(glIsBuffer(m_pbo))
+        cudaGraphicsResource_t resources[2] = {cudaPboResource, cudaVboResource};
+        cudaError_t err = cudaGraphicsMapResources(2, resources, 0);
+        if(err != cudaSuccess)
         {
-            if(m_mappedPtr)
-            {
-                cudaGraphicsUnmapResources(1, &cudaPboResource,0);
-                m_mappedPtr = nullptr;
-            }
-            // error invalid ressource handle
-            //cudaGraphicsUnregisterResource(cudaPboResource);
-            //glDeleteBuffers(1, &m_pbo);
+            std::cerr << "[CUDA Error] Impossible de mapper les ressources :"<< cudaGetErrorString(err) << std::endl;
+            return;
+        } 
+        cudaGraphicsResourceGetMappedPointer(&m_mappedPtr, nullptr, cudaPboResource);
+        cudaGraphicsResourceGetMappedPointer(&m_vboMappedPtr, nullptr, cudaVboResource);
+    }
+
+    void CudaGLInterop::unmapAll()
+    {
+        cudaGraphicsResource_t resources[2] = {cudaPboResource, cudaVboResource};
+        cudaError_t err = cudaGraphicsUnmapResources(2, resources, 0);
+        if(err != cudaSuccess)
+        {
+            std::cerr << "[CUDA Error] Impossible de unmap les ressources :" << cudaGetErrorString(err) << std::endl;
         }
+        m_mappedPtr = nullptr;
+        m_vboMappedPtr = nullptr;
     }
 
     bool CudaGLInterop::init()
     {
         initGLBuffers();
         return CudaGLInterop::initCudaInterop();
+    }
+
+    bool CudaGLInterop::initVboTest(unsigned int nbTrianglesInSoup)
+    {
+        initGLBuffersTriangleTest(nbTrianglesInSoup);
+        return CudaGLInterop::initCudaInteropTriangleTest();
     }
 
     // gemini
@@ -59,6 +75,16 @@ namespace M3D_RASTER_DIFF
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
         glFinish();
+    }
+
+    void CudaGLInterop::initGLBuffersTriangleTest(unsigned int nbTrianglesInSoup)
+    {
+        size_t allocationSize = nbTrianglesInSoup * 12 * sizeof(glm::vec3);
+        glGenBuffers(1, &m_vboTrianglesSoup);
+        glBindBuffer(GL_ARRAY_BUFFER, m_vboTrianglesSoup);
+
+        glBufferData(GL_ARRAY_BUFFER, allocationSize, NULL, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
         // https://learnopengl.com/Advanced-OpenGL/Framebuffers
@@ -117,24 +143,36 @@ namespace M3D_RASTER_DIFF
     OpenGL Vendor : NVIDIA Corporation
     OpenGL Renderer : NVIDIA RTX PRO 1000 Blackwell Generation Laptop GPU/PCIe/SSE2
     ----------------------
-
     */
     bool CudaGLInterop::initCudaInterop()
     {
+        // textures interop
         cudaError_t err = cudaGraphicsGLRegisterBuffer(&cudaPboResource, m_pbo, cudaGraphicsRegisterFlagsReadOnly);
         if (err != cudaSuccess)
         {
-            std::cerr << "Erreur registre Cuda Opengl : " << cudaGetErrorString(err) << std::endl;
+            std::cerr << "PBO - Erreur registre Cuda Opengl : " << cudaGetErrorString(err) << std::endl;
             return false; 
         } else {
-            std::cout << "Succès de cudaGraphicsGLRegisterBuffer" << std::endl;
+            return true;
+        }
+        
+    }
+
+    bool CudaGLInterop::initCudaInteropTriangleTest()
+    {
+        cudaError_t err = cudaGraphicsGLRegisterBuffer(&cudaVboResource, m_vboTrianglesSoup, cudaGraphicsRegisterFlagsNone);
+        if (err != cudaSuccess)
+        {
+            std::cerr << "VBO - Erreur registre Cuda Opengl : " << cudaGetErrorString(err) << std::endl;
+            return false; 
+        } else {
             return true;
         }
     }
 
     void CudaGLInterop::checkResult()
     {
-        uchar4* devPtr = this->get<uchar4>();
+        uchar4* devPtr = this->getDevPixels<uchar4>();
         if (!devPtr) {
             std::cerr << "[CPU Test] Erreur : Le pointeur CUDA est nul !" << std::endl;
             return;
